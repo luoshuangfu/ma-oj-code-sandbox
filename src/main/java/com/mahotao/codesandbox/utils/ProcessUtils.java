@@ -1,5 +1,6 @@
 package com.mahotao.codesandbox.utils;
 
+import cn.hutool.core.date.StopWatch;
 import cn.hutool.core.util.StrUtil;
 import com.mahotao.codesandbox.model.ExecuteMessage;
 
@@ -21,6 +22,9 @@ public class ProcessUtils {
 
 
         try{
+            //秒表工具类，用于记录代码执行时长
+            StopWatch stopWatch=new StopWatch();
+            stopWatch.start();
             //等待程序执行，获取错误码
             int exitValue= runProcess.waitFor();
             executeMessage.setExitValue(exitValue);
@@ -59,6 +63,9 @@ public class ProcessUtils {
                 }
                 executeMessage.setErrorMessage(errorCompileOutputStringBuilder.toString());
             }
+            stopWatch.stop();
+            //得到运行时长
+            executeMessage.setTime(stopWatch.getLastTaskTimeMillis());
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -78,7 +85,6 @@ public class ProcessUtils {
             //向控制台输入程序
             OutputStream outputStream = runProcess.getOutputStream();
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(outputStream);
-            //outputStreamWriter.write("1\n1\n");
             String[] s = args.split(" ");
             String join = StrUtil.join("\n", s)+"\n";
             outputStreamWriter.write(join);
