@@ -5,6 +5,8 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.dfa.FoundWord;
+import cn.hutool.dfa.WordTree;
 import com.mahotao.codesandbox.model.ExecuteCodeRequest;
 import com.mahotao.codesandbox.model.ExecuteCodeResponse;
 import com.mahotao.codesandbox.model.ExecuteMessage;
@@ -22,15 +24,22 @@ import java.util.List;
 public class JavaNativeCodeSandBox implements CodeSandBox {
     public static final String GLOBAL_CODE_DIR_NAME="tmpCode";
     public static final String GLOBAL_JAVA_CLASS_NAME="Main.java";
+    public static final long TIME_OUT=5000L;
+    private static final List<String> blackList = Arrays.asList("Files", "exec");
+    public static final WordTree WORD_TREE=new WordTree();
+
+    static {
+        WORD_TREE.addWords(blackList);
+    }
 
     public static void main(String[] args) {
         JavaNativeCodeSandBox javaNativeCodeSandBox = new JavaNativeCodeSandBox();
         ExecuteCodeRequest executeCodeRequest = new ExecuteCodeRequest();
         executeCodeRequest.setInputList(Arrays.asList("1 3","1 2"));
-        //String code= ResourceUtil.readStr("testCode/simpleCompute/Main.java", StandardCharsets.UTF_8);
+        String code= ResourceUtil.readStr("testCode/simpleCompute/Main.java", StandardCharsets.UTF_8);
 //        String code= ResourceUtil.readStr("testCode/simpleComputeArgs/Main.java", StandardCharsets.UTF_8);
         //String code= ResourceUtil.readStr("testCode/unsafeCode/SleepError.java", StandardCharsets.UTF_8);
-        String code= ResourceUtil.readStr("testCode/unsafeCode/MemoryError.java", StandardCharsets.UTF_8);
+        //String code= ResourceUtil.readStr("testCode/unsafeCode/MemoryError.java", StandardCharsets.UTF_8);
         executeCodeRequest.setCode(code);
         executeCodeRequest.setLanguage("java");
         ExecuteCodeResponse executeCodeResponse = javaNativeCodeSandBox.executeCode(executeCodeRequest);
@@ -41,6 +50,11 @@ public class JavaNativeCodeSandBox implements CodeSandBox {
         List<String> inputList = request.getInputList();
         String language = request.getLanguage();
         String code = request.getCode();
+        FoundWord foundWord = WORD_TREE.matchWord(code);
+        if(foundWord!=null){
+            System.out.println("发现违禁词: " + foundWord.getWord());
+            return null;
+        }
         //获取项目根目录，拼接出全局临时目录.../tmp
         String userDir=System.getProperty("user.dir");
         String globalCodePathName=userDir+ File.separator+GLOBAL_CODE_DIR_NAME;
@@ -71,10 +85,20 @@ public class JavaNativeCodeSandBox implements CodeSandBox {
             //拼接运行命令
             //-cp（classpath）指定类加载路径为当前用户的随机隔离目录
             // Main是主类名，inputArgs是作为命令行参数（args）传给Main方法
-            String runCmd=String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s",userCodeParentPath,inputArgs);
+            String runCmd=String.format("java -Xmx256m -Dfile.encoding=UTF-8 -cp %s Main %s",userCodeParentPath,inputArgs);
             try {
                 //拉起进程执行java Main命令
                 Process runProcess=Runtime.getRuntime().exec(runCmd);
+                //防止while(true)超时
+                new Thread(()->{
+                    try {
+                        Thread.sleep(TIME_OUT);
+                        System.out.println("已超时");
+                        runProcess.destroy();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }).start();
                 //获取执行结果
                 ExecuteMessage executeMessage = ProcessUtils.runProcessAndGetMessage(runProcess, "运行");
                 //交互式 switch
